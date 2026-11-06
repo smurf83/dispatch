@@ -33,7 +33,7 @@ node tests/http.mjs # requires the dev server and an empty local database
 
 ## Team setup
 
-The first authenticated visitor to the initially owner-private Site becomes its manager. Open it yourself before granting other people access. Add drivers in Team using the exact email they use to sign in. Separately grant them viewer access through Site sharing; adding a driver never sends an invitation. Do not grant Site editor access unless they should edit application source. Email matching uses trusted authenticated identity headers. Drivers are restricted to their own delivery records and availability. Managers can see and manage all records.
+The first authenticated visitor to the initially owner-private Site becomes an Admin. Open it yourself before granting other people access. In Team, add each person using the exact email they use to sign in and choose Driver or Admin access; existing team members can also be promoted to Admin. Separately grant them viewer access through Site sharing; adding a team member never sends an invitation. Do not grant Site editor access unless they should edit application source. Email matching uses trusted authenticated identity headers. Drivers are restricted to their own delivery records and availability. Admins can see and manage all records, including final shift assignments and cover approvals. At least one Admin must remain on the workspace.
 
 ## Decisions and MVP limits
 
@@ -42,7 +42,7 @@ The first authenticated visitor to the initially owner-private Site becomes its 
 - OCR runs locally; images are not uploaded or retained. First use requires Internet access to download Tesseract.js, its worker/WASM and English language data from CDNs. Printed, clear JPG/PNG images work best. Review every extracted field. Live camera/OCR and visual browser QA could not be verified in the authoring environment because computer-control permissions were unavailable.
 - Refresh retrieves changes from other users; writes also detect stale revisions. No push notifications, offline writes or background synchronization.
 - Shifts are single-day, in Europe/Dublin local time. Overnight shifts/availability should be split into separate days. Matching locations are case-insensitive exact names.
-- There is one manager role set on initial bootstrap; role transfer, automatic invitations, payment gateways and automated route optimization are outside this MVP.
+- Workspace roles are Admin and Driver. Existing Manager records remain compatible as Admins. Automatic invitations, payment gateways and automated route optimization are outside this MVP.
 - CSV exports contain delivery/contact information and should be shared appropriately. No raw OCR images are stored.
 
 ## Source

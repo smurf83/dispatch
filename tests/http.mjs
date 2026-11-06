@@ -4,7 +4,7 @@ const anon=await fetch(base+'/api/workspace');assert.equal(anon.status,401);
 const sign=await fetch(base+'/signin-with-chatgpt?return_to=/',{redirect:'manual'});
 const cookie=sign.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie,'local auth cookie');
 const headers={Cookie:cookie,'Content-Type':'application/json',Origin:base};
-let r=await fetch(base+'/api/workspace',{headers});assert.equal(r.status,200);let b=await r.json();let rev=b.revision;const me=b.state.me;assert.equal(me.role,'manager');
+let r=await fetch(base+'/api/workspace',{headers});assert.equal(r.status,200);let b=await r.json();let rev=b.revision;const me=b.state.me;assert.ok(['admin','manager'].includes(me.role));
 async function action(action,payload={}){const r=await fetch(base+'/api/workspace',{method:'POST',headers,body:JSON.stringify({action,payload,revision:rev})});const b=await r.json();assert.equal(r.status,200,JSON.stringify(b));rev=b.revision;return b.state}
 const date=new Date(Date.now()+86400000).toISOString().slice(0,10);
 await action('availability',{date,start:'10:00',end:'18:00',locations:'Test Dublin'});
