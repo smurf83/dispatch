@@ -1,10 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {fresh,mutate,view,day,nextDay,extractDocket} from '../lib/domain.mjs';
+import {fresh,mutate,view,ensureSuperUser,day,nextDay,extractDocket} from '../lib/domain.mjs';
+import {isSystemSuperUser} from '../lib/system-access.mjs';
 const setup=()=>{const s=fresh({userId:'manager',email:'manager@test.ie',name:'Manager'});const m=s.drivers[0];mutate(s,m,'driver',{name:'Driver',email:'driver@test.ie'});return {s,m,d:s.drivers[1]}};
 const slot={date:nextDay(1),start:'10:00',end:'18:00',locations:'Dublin City'};
 const shift={date:nextDay(1),start:'12:00',end:'16:00',location:'Dublin City'};
 test('new workspaces grant the initial owner Admin access',()=>{assert.equal(fresh({userId:'owner',email:'owner@test.ie'}).drivers[0].role,'admin')});
+test('configured Super User is added to each workspace with system-wide access',()=>{const {s,m,d}=setup();const su=ensureSuperUser(s,{userId:'suzanne',email:'suemurphy24@gmail.com',name:'Suzanne Murphy'});assert.equal(isSystemSuperUser(su.email),true);assert.equal(su.role,'superuser');assert.equal(view(s,su).availability.length,s.availability.length);mutate(s,su,'settings',{base:5,perKm:1});assert.equal(s.settings.base,5);assert.throws(()=>mutate(s,m,'access',{id:su.id,role:'driver'}),/Super User access is managed/);assert.throws(()=>mutate(s,su,'access',{id:su.id,role:'driver'}),/Super User access is managed/);mutate(s,su,'access',{id:m.id,role:'driver'});assert.equal(m.role,'driver');assert.ok(s.drivers.includes(d))});
+test('Super User identity is matched case-insensitively',()=>{assert.equal(isSystemSuperUser('suemurphy24@gmail.com'),true);assert.equal(isSystemSuperUser('SUEMURPHY24@GMAIL.COM'),true)});
 test('availability, assigned shift, decline, cover and manager approval complete the workflow',()=>{const {s,m,d}=setup();mutate(s,d,'availability',slot);mutate(s,m,'shift',{...shift,driverId:d.id});const sh=s.shifts[0];assert.equal(sh.driverId,d.id);mutate(s,d,'decline',{id:sh.id});assert.equal(sh.status,'open');assert.equal(sh.driverId,null);mutate(s,d,'cover',{id:sh.id});assert.equal(s.requests.length,1);assert.equal(sh.driverId,null);mutate(s,m,'review',{id:s.requests[0].id,approve:true});assert.equal(sh.driverId,d.id);assert.equal(s.requests.length,0)});
 test('admin authority is required for shifts, team, rates and approvals',()=>{const {s,d}=setup();for(const action of ['shift','driver','access','settings','review','assign','sample','clearSample'])assert.throws(()=>mutate(s,d,action,{}),/Admin/)});
 test('admins can grant Admin access and cannot remove the last Admin',()=>{const {s,m,d}=setup();mutate(s,m,'access',{id:d.id,role:'admin'});assert.equal(d.role,'admin');mutate(s,m,'access',{id:m.id,role:'driver'});assert.equal(m.role,'driver');assert.throws(()=>mutate(s,d,'access',{id:d.id,role:'driver'}),/at least one Admin/);assert.throws(()=>mutate(s,m,'access',{id:d.id,role:'admin'}),/Admin/);});

@@ -1,17 +1,29 @@
 import { env } from 'cloudflare:workers';
 import { getChatGPTUser } from '../../chatgpt-auth';
-import { fresh, member, view, mutate } from '../../../lib/domain.mjs';
+import { fresh, member, ensureSuperUser, view, mutate } from '../../../lib/domain.mjs';
+import { isSystemSuperUser } from '../../../lib/system-access.mjs';
 export const dynamic = 'force-dynamic';
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 async function context(){
  const u=await getChatGPTUser();if(!u)return {error:json({error:'Please sign in to your workspace.'},401)};
  if(!env.DB)return {error:json({error:'Database is not configured.'},503)};
  const user={...u,name:u.fullName||u.email};
- let row=await env.DB.prepare('SELECT data, revision FROM workspace WHERE id = ?').bind('main').first<{data:string,revision:number}>();
- if(!row){await env.DB.prepare('INSERT OR IGNORE INTO workspace (id, revision, data) VALUES (?, 0, ?)').bind('main',JSON.stringify(fresh(user))).run();row=await env.DB.prepare('SELECT data, revision FROM workspace WHERE id = ?').bind('main').first<{data:string,revision:number}>();}
- const state=JSON.parse(row!.data);const me=member(state,user);
- if(!me)return {error:json({error:'Your email is not on this team. Ask the manager to add '+u.email+'.'},403)};
- return {state,me,revision:row!.revision};
+ const isSuperUser=isSystemSuperUser(u.email);
+ for(let attempt=0;attempt<3;attempt++){
+  let row=await env.DB.prepare('SELECT data, revision FROM workspace WHERE id = ?').bind('main').first<{data:string,revision:number}>();
+  if(!row){await env.DB.prepare('INSERT OR IGNORE INTO workspace (id, revision, data) VALUES (?, 0, ?)').bind('main',JSON.stringify(fresh(user))).run();continue;}
+  const state=JSON.parse(row.data);let me=member(state,user);
+  if(isSuperUser){
+   const original=row.data;me=ensureSuperUser(state,user);
+   if(JSON.stringify(state)!==original){
+    const result=await env.DB.prepare('UPDATE workspace SET data = ?, revision = revision + 1 WHERE id = ? AND revision = ?').bind(JSON.stringify(state),'main',row.revision).run();
+    if(result.meta.changes!==1)continue;
+    row={...row,revision:row.revision+1};
+   }
+  }else if(!me)return {error:json({error:'Your email is not on this team. Ask the manager to add '+u.email+'.'},403)};
+  return {state,me,revision:row.revision};
+ }
+ return {error:json({error:'The workspace is being updated. Please retry.'},409)};
 }
 export async function GET(){try{const c=await context();if(c.error)return c.error;return json({state:view(c.state,c.me),revision:c.revision});}catch(e){console.error(e);return json({error:'Unable to load the workspace. Please try again.'},500)}}
 export async function POST(request:Request){
