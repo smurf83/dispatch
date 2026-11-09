@@ -5,10 +5,16 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
-const localUserId = "local_seedy";
-const localEmail = "seedy@sites.test";
-const localFullName = "Seedy";
 const localCookieName = "__sites_local_auth";
+const localAccounts = [
+  { key: "seedy", userId: "local_seedy", email: "seedy@sites.test", name: "Seedy" },
+  {
+    key: "suzanne",
+    userId: "local_suzanne",
+    email: "suemurphy24@gmail.com",
+    name: "Suzanne Murphy",
+  },
+] as const;
 const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 const localAddresses = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const authPaths = new Set([
@@ -43,7 +49,9 @@ export function sites({ mockAuth = true } = {}): Plugin {
       if (!mockAuth) return;
       const secure = Boolean(server.config.server.https);
 
-      server.config.logger.info(`Sites local sign-in: ${localEmail}`);
+      server.config.logger.info(
+        `Sites local sign-in accounts: ${localAccounts.map(({ email }) => email).join(", ")}`,
+      );
       server.middlewares.use((request, response, next) => {
         for (const name of Object.keys(request.headers)) {
           if (name.startsWith("oai-authenticated-user-")) {
@@ -105,13 +113,21 @@ export function sites({ mockAuth = true } = {}): Plugin {
         const signIn = url.pathname === "/signin-with-chatgpt";
         const signOut = url.pathname === "/signout-with-chatgpt";
         if (!signIn && !signOut) {
-          if (signInCookies.length === 1 && signInCookies[0] === "1") {
-            setHeader(request, "oai-authenticated-user-id", localUserId);
-            setHeader(request, "oai-authenticated-user-email", localEmail);
+          const account =
+            signInCookies.length === 1
+              ? localAccounts.find(
+                  (candidate) =>
+                    candidate.key === signInCookies[0] ||
+                    (signInCookies[0] === "1" && candidate.key === "seedy"),
+                )
+              : undefined;
+          if (account) {
+            setHeader(request, "oai-authenticated-user-id", account.userId);
+            setHeader(request, "oai-authenticated-user-email", account.email);
             setHeader(
               request,
               "oai-authenticated-user-full-name",
-              localFullName,
+              account.name,
             );
             setHeader(
               request,
@@ -120,6 +136,11 @@ export function sites({ mockAuth = true } = {}): Plugin {
             );
           }
           next();
+          return;
+        }
+
+        if (signIn && !url.searchParams.has("account")) {
+          respondWithLocalSignIn(response, safeReturn(url.searchParams.get("return_to")));
           return;
         }
 
@@ -146,6 +167,17 @@ export function sites({ mockAuth = true } = {}): Plugin {
           return;
         }
 
+        const selectedAccount = signIn
+          ? localAccounts.find(
+              (account) => account.key === url.searchParams.get("account"),
+            )
+          : undefined;
+        if (signIn && !selectedAccount) {
+          respond(response, 400);
+          return;
+        }
+        const accountCookieValue = selectedAccount?.key ?? "";
+
         if (
           request.method !== "GET" &&
           (!signOut || request.method !== "POST")
@@ -163,7 +195,7 @@ export function sites({ mockAuth = true } = {}): Plugin {
         );
         response.setHeader(
           "Set-Cookie",
-          `${localCookieName}=${signIn ? "1" : ""}; Path=/; ${
+          `${localCookieName}=${accountCookieValue}; Path=/; ${
             signOut ? "Max-Age=0; " : ""
           }HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`,
         );
@@ -213,6 +245,25 @@ function respond(response: ServerResponse, status: number): void {
   response.statusCode = status;
   response.setHeader("Cache-Control", "private, no-store");
   response.end();
+}
+
+function respondWithLocalSignIn(
+  response: ServerResponse,
+  returnTo: string,
+): void {
+  const choices = localAccounts
+    .map(
+      (account) =>
+        `<a href="/signin-with-chatgpt?account=${account.key}&amp;return_to=${encodeURIComponent(returnTo)}">Sign in as ${account.name}${account.key === "suzanne" ? " (System Super User)" : ""}</a>`,
+    )
+    .join("");
+  response.statusCode = 200;
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+  response.end(
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local sign-in · Dispatch</title><style>body{font:16px system-ui,sans-serif;background:#f4f6f5;color:#17231e;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:white;padding:2rem;border-radius:1rem;box-shadow:0 12px 40px #173a2718;max-width:28rem;width:calc(100% - 4rem)}h1{font-size:1.5rem}nav{display:grid;gap:.75rem;margin-top:1.5rem}a{padding:.9rem 1rem;border-radius:.65rem;background:#165d43;color:white;text-decoration:none;font-weight:600}a:focus-visible{outline:3px solid #e1a53a;outline-offset:3px}</style><main class="card"><h1>Choose a local account</h1><p>This sign-in option is available only in the local development environment.</p><nav>${choices}</nav></main></html>`,
+  );
 }
 
 function safeReturn(value: string | null): string {

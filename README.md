@@ -23,7 +23,7 @@ node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1
 npm run dev -- --hostname 127.0.0.1
 ```
 
-Visit http://127.0.0.1:5173 and sign in. The starter's loopback-only development sign-in uses `seedy@sites.test`; hosted authentication uses ChatGPT identity supplied by Sites. Local and hosted databases are separate.
+Visit http://127.0.0.1:5173 and choose a local sign-in account. The loopback-only development sign-in supports Seedy (`seedy@sites.test`) and Suzanne Murphy (`suemurphy24@gmail.com`), whose configured system-wide Super User access is also applied locally. Hosted authentication uses ChatGPT identity supplied by Sites. Local and hosted databases are separate.
 
 ```sh
 npm test

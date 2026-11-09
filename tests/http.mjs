@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 const base='http://127.0.0.1:5173';
 const anon=await fetch(base+'/api/workspace');assert.equal(anon.status,401);
-const sign=await fetch(base+'/signin-with-chatgpt?return_to=/',{redirect:'manual'});
+const chooser=await fetch(base+'/signin-with-chatgpt?return_to=/');assert.equal(chooser.status,200);const chooserHtml=await chooser.text();assert.match(chooserHtml,/Sign in as Seedy/);assert.match(chooserHtml,/Sign in as Suzanne Murphy \(System Super User\)/);
+const sign=await fetch(base+'/signin-with-chatgpt?account=seedy&return_to=/',{redirect:'manual'});
 const cookie=sign.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie,'local auth cookie');
 const headers={Cookie:cookie,'Content-Type':'application/json',Origin:base};
 let r=await fetch(base+'/api/workspace',{headers});assert.equal(r.status,200);let b=await r.json();let rev=b.revision;const me=b.state.me;assert.ok(['admin','manager'].includes(me.role));
+const suSign=await fetch(base+'/signin-with-chatgpt?account=suzanne&return_to=/',{redirect:'manual'});const suCookie=suSign.headers.get('set-cookie')?.split(';')[0];assert.ok(suCookie,'Suzanne local auth cookie');
+const suResponse=await fetch(base+'/api/workspace',{headers:{Cookie:suCookie}});assert.equal(suResponse.status,200);const suState=await suResponse.json();assert.equal(suState.state.me.email,'suemurphy24@gmail.com');assert.equal(suState.state.me.role,'superuser');
+r=await fetch(base+'/signout-with-chatgpt?return_to=/',{headers:{Cookie:suCookie},redirect:'manual'});assert.equal(r.status,302);assert.match(r.headers.get('set-cookie')||'',/Max-Age=0/);
+r=await fetch(base+'/api/workspace',{headers:{Cookie:suCookie}});assert.equal(r.status,401);
+r=await fetch(base+'/api/workspace',{headers});assert.equal(r.status,200);b=await r.json();rev=b.revision;
 async function action(action,payload={}){const r=await fetch(base+'/api/workspace',{method:'POST',headers,body:JSON.stringify({action,payload,revision:rev})});const b=await r.json();assert.equal(r.status,200,JSON.stringify(b));rev=b.revision;return b.state}
 const date=new Date(Date.now()+86400000).toISOString().slice(0,10);
 await action('availability',{date,start:'10:00',end:'18:00',locations:'Test Dublin'});
